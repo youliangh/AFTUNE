@@ -3,14 +3,101 @@ import argparse
 import os
 import json
 import time
+from pathlib import Path
 from recorder import Recorder, set_deterministic
 from verify_block import forward_block_layer, get_hash
 from replay_utils import new_rope_state
 from PIL import Image
 from torchvision import transforms
 
+
+class VerifiedReference:
+    """Immutable reference modules, verified once and reused across inference blocks.
+
+    The caller must keep the reference directory immutable for this object's
+    lifetime. Evidence hashes and numerical replay are still checked per call.
+    """
+
+    def __init__(self, block_records_dir, device='cpu', use_float32=True, use_float64=False):
+        if use_float32 and use_float64:
+            raise ValueError('Choose at most one verification dtype')
+        self.path = str(Path(block_records_dir).resolve())
+        self.device = str(device)
+        self.use_float32 = use_float32
+        self.use_float64 = use_float64
+        self.recorder = Recorder(save_dir=self.path, enabled=False)
+        self.metadata = self.recorder.load_metadata()
+        if not self.metadata:
+            raise FileNotFoundError(f'Missing reference metadata: {self.path}/metadata.json')
+        self.model_name = self.metadata['model_name']
+        self.recorder.model_name = self.model_name
+        self.recorder.module_structure_dir = self.metadata['module_structure_dir']
+        self._layers = {}
+        self._rotary = None
+        self._rotary_loaded = False
+
+    def validate(self, block_records_dir, device, use_float32, use_float64, inference_metadata):
+        if (str(Path(block_records_dir).resolve()) != self.path or
+                str(device) != self.device or
+                use_float32 != self.use_float32 or
+                use_float64 != self.use_float64):
+            raise ValueError('VerifiedReference path, device or dtype mismatch')
+        if (inference_metadata['chunk_size'] != self.metadata['chunk_size'] or
+                inference_metadata['use_blake3'] != self.metadata['use_blake3'] or
+                inference_metadata['model_name'] != self.model_name):
+            raise ValueError('Inference record and trusted reference metadata differ')
+
+    def layer(self, layer_name):
+        if layer_name in self._layers:
+            return self._layers[layer_name]
+        module = self.recorder.load_module_structure(layer_name, device=self.device)
+        layer_dir = os.path.join(self.path, 'final_model', layer_name)
+        params_dir = os.path.join(layer_dir, 'parameters')
+        hash_path = os.path.join(layer_dir, 'parameter_hashes.json')
+        mapping_path = os.path.join(params_dir, 'name_mapping.json')
+        if not (os.path.isfile(hash_path) and os.path.isfile(mapping_path)):
+            raise FileNotFoundError(f'Missing trusted parameters for {layer_name}')
+        with open(hash_path) as f:
+            expected_hashes = json.load(f)
+        with open(mapping_path) as f:
+            name_mapping = json.load(f)
+        named_params = dict(module.named_parameters())
+        for safe_name, original_name in name_mapping.items():
+            tensor = torch.load(os.path.join(params_dir, f'{safe_name}.pt'),
+                                map_location=self.device, weights_only=False)
+            if original_name not in expected_hashes:
+                raise ValueError(f'{layer_name}.{original_name} missing parameter hash')
+            actual_hash = get_hash(tensor, self.metadata['chunk_size'], self.metadata['use_blake3'])
+            if actual_hash != expected_hashes[original_name]:
+                raise ValueError(f'{layer_name}.{original_name} hash mismatch')
+            if original_name not in named_params:
+                raise ValueError(f'{layer_name}.{original_name} missing in structure')
+            if self.use_float64:
+                tensor = tensor.to(dtype=torch.float64)
+            elif self.use_float32:
+                tensor = tensor.to(dtype=torch.float32)
+            named_params[original_name].data.copy_(tensor)
+        if set(name_mapping.values()) != set(named_params):
+            raise ValueError(f'Incomplete trusted parameters for {layer_name}')
+        if self.use_float64:
+            module = module.to(dtype=torch.float64)
+        elif self.use_float32:
+            module = module.to(dtype=torch.float32)
+        module.eval()
+        self._layers[layer_name] = module
+        return module
+
+    def rotary(self):
+        if not self._rotary_loaded:
+            rotary_path = os.path.join(self.recorder.module_structure_dir, self.model_name,
+                                       'module_structures', 'rotary_emb.pt')
+            self._rotary = (self.recorder.load_module_structure('rotary_emb', device=self.device)
+                            if os.path.isfile(rotary_path) else None)
+            self._rotary_loaded = True
+        return self._rotary
+
 # Forward-only replay of one inference layer block vs recorded activations
-def verify_inference(layer_block_id, inference_records_dir, block_records_dir, device, strict_hash, image_path, use_float32, use_float64):
+def verify_inference(layer_block_id, inference_records_dir, block_records_dir, device, strict_hash, image_path, use_float32, use_float64, verified_reference=None, report_strict_mismatch=False):
     rec = Recorder(save_dir=inference_records_dir)
     metadata = rec.load_metadata()
     if not metadata:
@@ -33,6 +120,12 @@ def verify_inference(layer_block_id, inference_records_dir, block_records_dir, d
     load_start = time.time()
     block_recorder = Recorder(save_dir=block_records_dir)
     block_metadata = block_recorder.load_metadata()
+    if not block_metadata:
+        return {'error': f'Cannot load trusted reference metadata: {block_records_dir}/metadata.json'}
+    if verified_reference is not None:
+        if block_metadata != verified_reference.metadata:
+            raise ValueError('Trusted reference metadata changed after caching')
+        verified_reference.validate(block_records_dir, device, use_float32, use_float64, metadata)
     model_name = block_metadata['model_name']
     is_llm = model_name not in ['vit_large', 'dinov2_giant']
     
@@ -40,7 +133,8 @@ def verify_inference(layer_block_id, inference_records_dir, block_records_dir, d
     block_recorder.model_name = model_name
     layers = {}
     for layer_name in layer_names:
-        layer_module = block_recorder.load_module_structure(layer_name, device=device)
+        layer_module = (verified_reference.layer(layer_name) if verified_reference is not None
+                        else block_recorder.load_module_structure(layer_name, device=device))
         layers[layer_name] = layer_module
     
     final_dir = os.path.join(block_records_dir, 'final_model')
@@ -49,7 +143,7 @@ def verify_inference(layer_block_id, inference_records_dir, block_records_dir, d
 
     # Load finetuned weights from block_records/final_model and verify hashes
     hash_start = time.time()
-    for layer_name in layer_names:
+    for layer_name in ([] if verified_reference is not None else layer_names):
         layer_dir = os.path.join(final_dir, layer_name)
         params_dir = os.path.join(layer_dir, 'parameters')
         hash_file = os.path.join(layer_dir, 'parameter_hashes.json')
@@ -130,6 +224,7 @@ def verify_inference(layer_block_id, inference_records_dir, block_records_dir, d
     layer_outputs = {}
     block_diff_norm_sq = 0.0
     block_expected_norm_sq = 0.0
+    first_computed_hash_mismatch = None
 
     is_block_first_layer = {name: (layer_names.index(name) == 0) for name in layer_names}
     is_block_last_layer = {name: (layer_names.index(name) == len(layer_names) - 1) for name in layer_names}
@@ -139,9 +234,12 @@ def verify_inference(layer_block_id, inference_records_dir, block_records_dir, d
     rotary_emb_module = None
     rope_state = None
     if is_llm:
-        rotary_emb_path = os.path.join(block_recorder.module_structure_dir, model_name, "module_structures", "rotary_emb.pt")
-        if os.path.isfile(rotary_emb_path):
-            rotary_emb_module = block_recorder.load_module_structure("rotary_emb", device=device)
+        if verified_reference is not None:
+            rotary_emb_module = verified_reference.rotary()
+        else:
+            rotary_emb_path = os.path.join(block_recorder.module_structure_dir, model_name, "module_structures", "rotary_emb.pt")
+            if os.path.isfile(rotary_emb_path):
+                rotary_emb_module = block_recorder.load_module_structure("rotary_emb", device=device)
         rope_state = new_rope_state(rotary_emb_module, model_name)
     # Chain layer forwards; compare last layer output to inference record
     with torch.no_grad():
@@ -196,8 +294,12 @@ def verify_inference(layer_block_id, inference_records_dir, block_records_dir, d
                     if disk_hash != expected_hash:
                         return {'error': f'{layer_name}: Disk data hash mismatch'}
                     comp_hash = get_hash(computed_output, metadata['chunk_size'], metadata['use_blake3'])
-                    if comp_hash != expected_hash and strict_hash:
-                        return {'error': f'{layer_name}: Computed output hash mismatch'}
+                    if comp_hash != expected_hash:
+                        mismatch = f'{layer_name}: Computed output hash mismatch'
+                        if strict_hash:
+                            return {'error': mismatch}
+                        if report_strict_mismatch and first_computed_hash_mismatch is None:
+                            first_computed_hash_mismatch = mismatch
                     time_stats['hash_verification'] += time.time() - hash_start
                 
                 diff = computed_output - expected_output
@@ -210,10 +312,13 @@ def verify_inference(layer_block_id, inference_records_dir, block_records_dir, d
     else:
         overall_relative_l2 = 0.0
 
-    return {
+    result = {
         'overall_relative_l2': overall_relative_l2,
         'time_stats': time_stats,
     }
+    if report_strict_mismatch:
+        result['computed_output_hash_mismatch'] = first_computed_hash_mismatch
+    return result
 
 
 def main():

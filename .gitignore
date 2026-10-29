@@ -1,5 +1,8 @@
 __pycache__/
 venv_aftune/
+.venv/
+build/
+*.egg-info/
 
 finetuned_model/
 block_records/

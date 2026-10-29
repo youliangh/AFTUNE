@@ -1,0 +1,50 @@
+{
+  "scope": "Exported scores/statistics, not model/tensor replay",
+  "python": "3.12.3 (system verifier); pinned experiment environment is recorded per run",
+  "unit_tests": {
+    "passed": 33,
+    "suites": [
+      7,
+      6,
+      9,
+      11
+    ],
+    "log": "unit-tests.log",
+    "log_sha256": "7f4bcf586a99d1aa4c90b3ff227accc83e16f4a0a5862bbf4f403c752fe8cfc4"
+  },
+  "archives": {
+    "llama-v3": {
+      "archive": "llama-v3-evidence.tar.gz",
+      "sha256": "bbf7902e881022274d8db527fb78e352439a4953dc3032dac13ab573ffbda686",
+      "source_tasks": 416,
+      "unique_evidence": 640,
+      "view_references": 1536,
+      "full_sampling_reconstruction": true,
+      "sample_repeats_per_evidence": 1000,
+      "passed": true
+    },
+    "qwen-v4": {
+      "archive": "qwen-v4-evidence.tar.gz",
+      "sha256": "63969b222dbd927c30cb84c287e8ffb481a4b88e06eb617088d1ef20b66d68ad",
+      "source_tasks": 416,
+      "unique_evidence": 640,
+      "view_references": 1536,
+      "full_sampling_reconstruction": true,
+      "sample_repeats_per_evidence": 1000,
+      "passed": true
+    }
+  },
+  "total_sampling_rounds_reconstructed": 1280000,
+  "frozen_code_fingerprints_match": true,
+  "whitespace_check": {
+    "note": "Original runtime bytes retained to preserve frozen hashes; existing extra EOF blank lines are not reformatted.",
+    "files": [
+      "experiments/inference_integrity/__init__.py",
+      "experiments/inference_integrity/generation.py",
+      "experiments/inference_integrity/injections.py",
+      "experiments/inference_integrity_qwen/__init__.py",
+      "experiments/inference_integrity_qwen/generation.py",
+      "experiments/inference_integrity_qwen/injections.py"
+    ]
+  }
+}

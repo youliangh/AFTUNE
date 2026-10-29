@@ -1,0 +1,62 @@
+COMMAND ['-m', 'unittest', 'experiments.inference_integrity.test_metrics_runner']
+.......
+----------------------------------------------------------------------
+Ran 7 tests in 2.275s
+
+OK
+
+COMMAND ['-m', 'unittest', 'discover', '-s', 'experiments/inference_integrity/tests', '-v']
+test_clean_short_long_short_reference_cache_matches_native (test_native.NativeAdapterTests.test_clean_short_long_short_reference_cache_matches_native) ... ok
+test_corrupt_trusted_parameter_stays_an_error_in_both_modes (test_native.NativeAdapterTests.test_corrupt_trusted_parameter_stays_an_error_in_both_modes) ... ok
+test_kv_context_simulation_is_seen_by_outer_decoder_recorder (test_native.NativeAdapterTests.test_kv_context_simulation_is_seen_by_outer_decoder_recorder) ... ok
+test_live_fault_and_disk_corruption_have_distinct_rejections (test_native.NativeAdapterTests.test_live_fault_and_disk_corruption_have_distinct_rejections) ... ok
+test_shared_paths_and_summary_reuse_identical_negative_sampling (test_v3.SharedControlsTests.test_shared_paths_and_summary_reuse_identical_negative_sampling) ... ok
+test_two_layer_blocks_preserve_live_fault_and_sparse_commitment (test_v3.SparseEvidenceTests.test_two_layer_blocks_preserve_live_fault_and_sparse_commitment) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.613s
+
+OK
+
+COMMAND ['-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_inference_integrity_generation.py', '-v']
+test_computation_and_serving_use_actual_mlp_outputs (test_inference_integrity_generation.InjectionTests.test_computation_and_serving_use_actual_mlp_outputs) ... ok
+test_fp32_rounding_ties_even_and_sign (test_inference_integrity_generation.InjectionTests.test_fp32_rounding_ties_even_and_sign) ... ok
+test_input_swap_preserves_bos_and_length (test_inference_integrity_generation.InjectionTests.test_input_swap_preserves_bos_and_length) ... ok
+test_kv_donor_is_actual_clean_attention_kv (test_inference_integrity_generation.InjectionTests.test_kv_donor_is_actual_clean_attention_kv) ... ok
+test_kv_identical_donor_fails_and_restores_attention (test_inference_integrity_generation.InjectionTests.test_kv_identical_donor_fails_and_restores_attention) ... ok
+test_kv_same_shape_sham_is_bitwise_clean (test_inference_integrity_generation.InjectionTests.test_kv_same_shape_sham_is_bitwise_clean) ... ok
+test_kv_shared_prefix_uses_first_different_history_slot (test_inference_integrity_generation.InjectionTests.test_kv_shared_prefix_uses_first_different_history_slot) ... ok
+test_kv_simulation_changes_only_final_attention_query (test_inference_integrity_generation.InjectionTests.test_kv_simulation_changes_only_final_attention_query) ... ok
+test_token_replacement_and_text_bridge (test_inference_integrity_generation.InjectionTests.test_token_replacement_and_text_bridge) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.034s
+
+OK
+
+COMMAND ['-m', 'unittest', 'discover', '-s', 'experiments/inference_integrity_qwen/tests', '-v']
+test_complete_persisted_views_and_sampling_pass_and_modified_summary_fails (test_audit.CompletionAuditTests.test_complete_persisted_views_and_sampling_pass_and_modified_summary_fails) ... The fast path is not available because one of the required library is not installed. Falling back to torch implementation. To install follow https://github.com/fla-org/flash-linear-attention#installation and https://github.com/Dao-AILab/causal-conv1d
+ok
+test_dynamic_block_counts_and_postcommit_sampling_budget (test_qwen.ProtocolTests.test_dynamic_block_counts_and_postcommit_sampling_budget) ... ok
+test_frozen_rows_labels_and_model_independent_schedule_are_reused (test_qwen.ProtocolTests.test_frozen_rows_labels_and_model_independent_schedule_are_reused) ... ok
+test_interrupted_attempt_is_archived_and_saved_substitute_source_preserved (test_qwen.ProtocolTests.test_interrupted_attempt_is_archived_and_saved_substitute_source_preserved) ... ok
+test_persisted_Wilson_intervals_match_but_changed_numbers_are_rejected (test_qwen.ProtocolTests.test_persisted_Wilson_intervals_match_but_changed_numbers_are_rejected) ... ok
+test_shared_evidence_sampling_and_costs_are_reused_in_every_view (test_qwen.ProtocolTests.test_shared_evidence_sampling_and_costs_are_reused_in_every_view) ... ok
+test_unassigned_ids_and_only_tokenizer_eos_are_masked (test_qwen.ProtocolTests.test_unassigned_ids_and_only_tokenizer_eos_are_masked) ... ok
+test_every_full_layer_kv_identity_and_single_changed_history_slot (test_qwen.QwenEvidenceTests.test_every_full_layer_kv_identity_and_single_changed_history_slot) ... ok
+test_generation_and_reverse_bridge_have_distinct_length_contracts (test_qwen.QwenEvidenceTests.test_generation_and_reverse_bridge_have_distinct_length_contracts) ... ok
+test_nested_checkpoint_dtype_cannot_override_fp32 (test_qwen.QwenEvidenceTests.test_nested_checkpoint_dtype_cannot_override_fp32) ... 
+Writing model shards:   0%|          | 0/1 [00:00<?, ?it/s]
+Writing model shards: 100%|██████████| 1/1 [00:00<00:00, 150.86it/s]
+
+Loading weights:   0%|          | 0/321 [00:00<?, ?it/s]
+Loading weights:  64%|██████▎   | 204/321 [00:00<00:00, 2025.87it/s]
+Loading weights: 100%|██████████| 321/321 [00:00<00:00, 2008.08it/s]
+ok
+test_sparse_13_block_record_replays_clean_and_live_fault (test_qwen.QwenEvidenceTests.test_sparse_13_block_record_replays_clean_and_live_fault) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 9.471s
+
+OK
+
